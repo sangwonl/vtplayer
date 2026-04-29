@@ -58,9 +58,11 @@ namespace vtplayer
             }
             float avg = sum / static_cast<float>(bin1 - bin0);
 
-            // Normalize (log scale)
+            // Normalize (log scale). Floor at -50 dB, headroom up to +30 dB —
+            // typical program material now peaks around 60–70% rather than
+            // saturating at 100%.
             float db = 20.0f * std::log10(avg + 1e-10f);
-            float normalized = (db + 60.0f) / 60.0f;
+            float normalized = (db + 50.0f) / 80.0f;
             normalized = std::clamp(normalized, 0.0f, 1.0f);
 
             // Smooth with decay
