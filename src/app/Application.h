@@ -61,6 +61,7 @@ namespace vtplayer
         void handleGlobalKeys(ventty::KeyEvent const &event);
         void openContextMenu();
         void onContextMenuSelect(int index);
+        void setVisualizerByIndex(int index);
 
         void playTrack(int index);
         void playNext();
@@ -86,6 +87,7 @@ namespace vtplayer
         Screen _screen = Screen::Browser;
         FocusPanel _focus = FocusPanel::FileBrowser;
         Theme _theme;
+        int _visualizerIndex = 1; // 1 = AudioSpectrum (default), 0 = Oscilloscope
 
         // Views
         std::unique_ptr<HeaderBar> _headerBar;

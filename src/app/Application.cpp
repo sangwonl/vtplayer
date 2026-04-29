@@ -4,6 +4,7 @@
 #include "Application.h"
 
 #include "../playlist/PlaylistRepository.h"
+#include "../visualizer/Oscilloscope.h"
 
 #ifdef VTPLAYER_BUILD_BUNDLE
 #include <ventty/ventty_gfx.h>
@@ -536,6 +537,13 @@ namespace vtplayer
             return;
         }
 
+        // Number keys 0-9: switch visualizer style (visualizer screen only).
+        if (_screen == Screen::Visualizer && event.key == Key::Char && ch >= '0' && ch <= '9')
+        {
+            setVisualizerByIndex(static_cast<int>(ch - '0'));
+            return;
+        }
+
         // Tab: switch focus between panels (browser screen only)
         if (event.key == Key::Tab && _screen == Screen::Browser)
         {
@@ -666,6 +674,30 @@ namespace vtplayer
         if (!_contextMenu) return;
         _contextMenu->open();
         _terminal->forceRedraw();
+    }
+
+    void Application::setVisualizerByIndex(int index)
+    {
+        if (!_visualizerView) return;
+        if (index < 0 || index > 9) return;
+
+        std::unique_ptr<Visualizer> vis;
+        switch (index)
+        {
+        case 0:
+            vis = std::make_unique<Oscilloscope>();
+            break;
+        case 1:
+            vis = std::make_unique<AudioSpectrum>(_config.barCount);
+            break;
+        default:
+            // Slots 2-9 reserved; ignore until implemented.
+            return;
+        }
+
+        _visualizerIndex = index;
+        _visualizerView->setVisualizer(std::move(vis));
+        if (_terminal) _terminal->forceRedraw();
     }
 
     void Application::onContextMenuSelect(int index)

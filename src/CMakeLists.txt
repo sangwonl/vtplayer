@@ -31,6 +31,8 @@ add_executable(vtplayer
     visualizer/Visualizer.h
     visualizer/AudioSpectrum.h
     visualizer/AudioSpectrum.cpp
+    visualizer/Oscilloscope.h
+    visualizer/Oscilloscope.cpp
 
     # config
     config/Config.h
