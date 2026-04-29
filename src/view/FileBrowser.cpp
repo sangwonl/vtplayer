@@ -148,6 +148,47 @@ void FileBrowser::refresh()
     {
         _selectedIndex = std::max(0, static_cast<int>(_entries.size()) - 1);
     }
+
+    clearMultiSelection();
+}
+
+void FileBrowser::clearMultiSelection()
+{
+    _multiSelected.clear();
+    _selectionAnchor = -1;
+}
+
+void FileBrowser::selectAllFiles()
+{
+    _multiSelected.clear();
+    for (int i = 0; i < static_cast<int>(_entries.size()); ++i)
+    {
+        if (_entries[i].isSelectable()) _multiSelected.insert(i);
+    }
+    _selectionAnchor = _selectedIndex;
+}
+
+void FileBrowser::extendSelectionTo(int newIndex)
+{
+    if (_selectionAnchor < 0) _selectionAnchor = _selectedIndex;
+    int const lo = std::min(_selectionAnchor, newIndex);
+    int const hi = std::max(_selectionAnchor, newIndex);
+    _multiSelected.clear();
+    for (int i = lo; i <= hi; ++i)
+    {
+        if (i >= 0 && i < static_cast<int>(_entries.size()) && _entries[i].isSelectable())
+        {
+            _multiSelected.insert(i);
+        }
+    }
+}
+
+void FileBrowser::onFocusChanged()
+{
+    if (!isFocused())
+    {
+        clearMultiSelection();
+    }
 }
 
 FileEntry const * FileBrowser::selectedEntry() const
@@ -211,13 +252,18 @@ void FileBrowser::draw(ventty::Window & window)
         }
 
         auto const & entry = _entries[idx];
-        bool selected = (idx == _selectedIndex) && isFocused();
+        bool const cursor = (idx == _selectedIndex) && isFocused();
+        bool const multi  = isFocused() && _multiSelected.count(idx) > 0;
 
-        Color fg = _theme.browserFg;
-        Color bg = selected ? _theme.browserSelBg : _theme.browserBg;
-        if (selected)
+        Color fg;
+        Color bg = (cursor || multi) ? _theme.browserSelBg : _theme.browserBg;
+        if (cursor)
         {
             fg = _theme.browserSelFg;
+        }
+        else if (multi)
+        {
+            fg = _theme.browserFg;
         }
         else if (entry.isDirectory)
         {
@@ -226,6 +272,10 @@ void FileBrowser::draw(ventty::Window & window)
         else if (entry.isAudio)
         {
             fg = _theme.browserAudioFg;
+        }
+        else
+        {
+            fg = _theme.browserFg;
         }
 
         ventty::Style style{fg, bg};
@@ -239,7 +289,7 @@ void FileBrowser::draw(ventty::Window & window)
         }
         else if (entry.isDirectory)
         {
-            icon = " \xE2\x96\xB8 "; // ▸
+            icon = " / ";
         }
         else if (entry.isPlaylist)
         {
@@ -270,12 +320,35 @@ bool FileBrowser::handleKey(ventty::KeyEvent const & event)
         return false;
     }
 
+    // Ctrl+A: select all selectable files (skips `..` and directories).
+    if (event.key == Key::Char && event.ctrl &&
+        (event.ch == 'a' || event.ch == 'A' || event.ch == 1))
+    {
+        selectAllFiles();
+        return true;
+    }
+
     if (event.key == Key::Up)
     {
         if (_selectedIndex > 0)
         {
-            _selectedIndex--;
+            int const target = _selectedIndex - 1;
+            if (event.shift)
+            {
+                if (_selectionAnchor < 0) _selectionAnchor = _selectedIndex;
+                _selectedIndex = target;
+                extendSelectionTo(target);
+            }
+            else
+            {
+                clearMultiSelection();
+                _selectedIndex = target;
+            }
             scrollToSelected();
+        }
+        else if (!event.shift)
+        {
+            clearMultiSelection();
         }
         return true;
     }
@@ -284,14 +357,30 @@ bool FileBrowser::handleKey(ventty::KeyEvent const & event)
     {
         if (_selectedIndex < static_cast<int>(_entries.size()) - 1)
         {
-            _selectedIndex++;
+            int const target = _selectedIndex + 1;
+            if (event.shift)
+            {
+                if (_selectionAnchor < 0) _selectionAnchor = _selectedIndex;
+                _selectedIndex = target;
+                extendSelectionTo(target);
+            }
+            else
+            {
+                clearMultiSelection();
+                _selectedIndex = target;
+            }
             scrollToSelected();
+        }
+        else if (!event.shift)
+        {
+            clearMultiSelection();
         }
         return true;
     }
 
     if (event.key == Key::PageUp)
     {
+        clearMultiSelection();
         int listH = rect().height - 2;
         _selectedIndex = std::max(0, _selectedIndex - listH);
         scrollToSelected();
@@ -300,21 +389,24 @@ bool FileBrowser::handleKey(ventty::KeyEvent const & event)
 
     if (event.key == Key::PageDown)
     {
+        clearMultiSelection();
         int listH = rect().height - 2;
         _selectedIndex = std::min(static_cast<int>(_entries.size()) - 1, _selectedIndex + listH);
         scrollToSelected();
         return true;
     }
 
-    if (event.key == Key::Home)
+    if (event.key == Key::Home || event.key == Key::Left)
     {
+        clearMultiSelection();
         _selectedIndex = 0;
         scrollToSelected();
         return true;
     }
 
-    if (event.key == Key::End)
+    if (event.key == Key::End || event.key == Key::Right)
     {
+        clearMultiSelection();
         _selectedIndex = static_cast<int>(_entries.size()) - 1;
         scrollToSelected();
         return true;
@@ -337,9 +429,25 @@ bool FileBrowser::handleKey(ventty::KeyEvent const & event)
             _onOpenPlaylist(entry->path);
             return true;
         }
-        if (entry->isAudio && _onAdd)
+        if (entry->isAudio && _onActivate)
         {
-            _onAdd(entry->path);
+            // Multi-selected audio files take priority over the cursor entry.
+            // _multiSelected (std::set<int>) iterates in ascending index
+            // order, so paths come out in display order.
+            std::vector<std::filesystem::path> paths;
+            for (int sel : _multiSelected)
+            {
+                if (sel >= 0 && sel < static_cast<int>(_entries.size())
+                    && _entries[sel].isAudio)
+                {
+                    paths.push_back(_entries[sel].path);
+                }
+            }
+            if (paths.empty())
+            {
+                paths.push_back(entry->path);
+            }
+            _onActivate(paths, event.shift);
             return true;
         }
         return true;
@@ -410,13 +518,14 @@ bool FileBrowser::handleMouse(ventty::MouseEvent const & event)
                     {
                         _onOpenPlaylist(entry->path);
                     }
-                    else if (entry && entry->isAudio && _onAdd)
+                    else if (entry && entry->isAudio && _onActivate)
                     {
-                        _onAdd(entry->path);
+                        _onActivate({entry->path}, false);
                     }
                 }
                 else
                 {
+                    clearMultiSelection();
                     _selectedIndex = clickedIdx;
                 }
             }

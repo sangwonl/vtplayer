@@ -18,6 +18,16 @@ void PlaylistView::addTrack(TrackInfo const & track)
     _tracks.push_back(track);
 }
 
+void PlaylistView::insertTrack(int idx, TrackInfo const & track)
+{
+    if (idx < 0) idx = 0;
+    if (idx > static_cast<int>(_tracks.size())) idx = static_cast<int>(_tracks.size());
+    _tracks.insert(_tracks.begin() + idx, track);
+    if (_playingIndex >= idx) _playingIndex++;
+    if (_selectedIndex >= idx) _selectedIndex++;
+    clearMultiSelection();
+}
+
 void PlaylistView::removeSelected()
 {
     if (_selectedIndex < 0 || _selectedIndex >= static_cast<int>(_tracks.size()))
@@ -25,9 +35,11 @@ void PlaylistView::removeSelected()
         return;
     }
 
+    bool const removingPlaying = (_playingIndex == _selectedIndex);
+
     _tracks.erase(_tracks.begin() + _selectedIndex);
 
-    if (_playingIndex == _selectedIndex)
+    if (removingPlaying)
     {
         _playingIndex = -1;
     }
@@ -39,6 +51,13 @@ void PlaylistView::removeSelected()
     if (_selectedIndex >= static_cast<int>(_tracks.size()) && !_tracks.empty())
     {
         _selectedIndex = static_cast<int>(_tracks.size()) - 1;
+    }
+
+    clearMultiSelection();
+
+    if (removingPlaying && _onPlayingRemoved)
+    {
+        _onPlayingRemoved();
     }
 }
 
@@ -76,18 +95,63 @@ void PlaylistView::moveSelectedDown()
 
 void PlaylistView::clear()
 {
+    bool const hadPlaying = (_playingIndex >= 0);
     _tracks.clear();
     _selectedIndex = 0;
     _scrollOffset = 0;
     _playingIndex = -1;
+    clearMultiSelection();
+    if (hadPlaying && _onPlayingRemoved)
+    {
+        _onPlayingRemoved();
+    }
 }
 
 void PlaylistView::setTracks(std::vector<TrackInfo> tracks)
 {
+    bool const hadPlaying = (_playingIndex >= 0);
     _tracks = std::move(tracks);
     _selectedIndex = 0;
     _scrollOffset = 0;
     _playingIndex = -1;
+    clearMultiSelection();
+    if (hadPlaying && _onPlayingRemoved)
+    {
+        _onPlayingRemoved();
+    }
+}
+
+void PlaylistView::clearMultiSelection()
+{
+    _multiSelected.clear();
+    _selectionAnchor = -1;
+}
+
+void PlaylistView::selectAll()
+{
+    _multiSelected.clear();
+    for (int i = 0; i < static_cast<int>(_tracks.size()); ++i)
+    {
+        _multiSelected.insert(i);
+    }
+    _selectionAnchor = _selectedIndex;
+}
+
+void PlaylistView::extendSelectionTo(int newIndex)
+{
+    if (_selectionAnchor < 0) _selectionAnchor = _selectedIndex;
+    int const lo = std::min(_selectionAnchor, newIndex);
+    int const hi = std::max(_selectionAnchor, newIndex);
+    _multiSelected.clear();
+    for (int i = lo; i <= hi; ++i) _multiSelected.insert(i);
+}
+
+void PlaylistView::onFocusChanged()
+{
+    if (!isFocused())
+    {
+        clearMultiSelection();
+    }
 }
 
 void PlaylistView::setSelectedIndex(int idx)
@@ -178,34 +242,48 @@ void PlaylistView::draw(ventty::Window & window)
         }
 
         auto const & track = _tracks[idx];
-        bool selected = (idx == _selectedIndex) && isFocused();
-        bool playing = (idx == _playingIndex);
+        bool const cursor = (idx == _selectedIndex) && isFocused();
+        bool const multi  = isFocused() && _multiSelected.count(idx) > 0;
+        bool const playing = (idx == _playingIndex);
 
-        Color fg = _theme.playlistFg;
-        Color bg = selected ? _theme.playlistSelBg : _theme.playlistBg;
-        if (selected)
+        Color fg;
+        Color bg = (cursor || multi) ? _theme.playlistSelBg : _theme.playlistBg;
+        if (cursor)
         {
             fg = _theme.playlistSelFg;
         }
-        if (playing && !selected)
+        else if (multi)
+        {
+            fg = _theme.playlistFg;
+        }
+        else if (playing)
         {
             fg = _theme.playlistPlayingFg;
+        }
+        else
+        {
+            fg = _theme.playlistFg;
         }
 
         ventty::Style style{fg, bg};
         window.fill(r.x, y, r.width - 1, 1, U' ', style);
 
-        // Index number
-        char numBuf[8];
-        std::snprintf(numBuf, sizeof(numBuf), "%2d.", idx + 1);
-        ventty::Style indexStyle{selected ? fg : _theme.playlistIndexFg, bg};
-        window.drawText(r.x + 1, y, numBuf, indexStyle);
-
-        // Playing indicator
+        // Prefix: index number, or ▶ for the currently-playing row.
+        // Drawn at r.x + 1 (the panel separator at r.x would otherwise
+        // overwrite anything drawn at column r.x). 3 cells wide to align
+        // with the "%2d." format used for non-playing rows.
         if (playing)
         {
-            window.drawText(r.x, y, "\xE2\x96\xB6", // ▶
-                            ventty::Style{_theme.playlistPlayingFg, bg});
+            Color arrowFg = cursor ? _theme.playlistSelFg : _theme.playlistPlayingFg;
+            window.drawText(r.x + 1, y, " \xE2\x96\xB6 ", // " ▶ "
+                            ventty::Style{arrowFg, bg});
+        }
+        else
+        {
+            char numBuf[8];
+            std::snprintf(numBuf, sizeof(numBuf), "%2d.", idx + 1);
+            ventty::Style indexStyle{cursor ? fg : _theme.playlistIndexFg, bg};
+            window.drawText(r.x + 1, y, numBuf, indexStyle);
         }
 
         // Track name
@@ -221,19 +299,42 @@ void PlaylistView::draw(ventty::Window & window)
         // Duration (right-aligned)
         std::string dur = formatDuration(track.duration);
         int durX = r.x + r.width - 2 - static_cast<int>(dur.size());
-        ventty::Style durStyle{selected ? fg : _theme.playlistDurationFg, bg};
+        ventty::Style durStyle{cursor ? fg : _theme.playlistDurationFg, bg};
         window.drawText(durX, y, dur, durStyle);
     }
 }
 
 bool PlaylistView::handleKey(ventty::KeyEvent const & event)
 {
+    // Ctrl+A: select all tracks.
+    if (event.key == Key::Char && event.ctrl &&
+        (event.ch == 'a' || event.ch == 'A' || event.ch == 1))
+    {
+        if (!_tracks.empty()) selectAll();
+        return true;
+    }
+
     if (event.key == Key::Up)
     {
         if (_selectedIndex > 0)
         {
-            _selectedIndex--;
+            int const target = _selectedIndex - 1;
+            if (event.shift)
+            {
+                if (_selectionAnchor < 0) _selectionAnchor = _selectedIndex;
+                _selectedIndex = target;
+                extendSelectionTo(target);
+            }
+            else
+            {
+                clearMultiSelection();
+                _selectedIndex = target;
+            }
             scrollToSelected();
+        }
+        else if (!event.shift)
+        {
+            clearMultiSelection();
         }
         return true;
     }
@@ -242,14 +343,30 @@ bool PlaylistView::handleKey(ventty::KeyEvent const & event)
     {
         if (_selectedIndex < static_cast<int>(_tracks.size()) - 1)
         {
-            _selectedIndex++;
+            int const target = _selectedIndex + 1;
+            if (event.shift)
+            {
+                if (_selectionAnchor < 0) _selectionAnchor = _selectedIndex;
+                _selectedIndex = target;
+                extendSelectionTo(target);
+            }
+            else
+            {
+                clearMultiSelection();
+                _selectedIndex = target;
+            }
             scrollToSelected();
+        }
+        else if (!event.shift)
+        {
+            clearMultiSelection();
         }
         return true;
     }
 
     if (event.key == Key::PageUp)
     {
+        clearMultiSelection();
         int listH = rect().height - 2;
         _selectedIndex = std::max(0, _selectedIndex - listH);
         scrollToSelected();
@@ -258,8 +375,28 @@ bool PlaylistView::handleKey(ventty::KeyEvent const & event)
 
     if (event.key == Key::PageDown)
     {
+        clearMultiSelection();
         int listH = rect().height - 2;
         _selectedIndex = std::min(static_cast<int>(_tracks.size()) - 1, _selectedIndex + listH);
+        scrollToSelected();
+        return true;
+    }
+
+    if (event.key == Key::Home || event.key == Key::Left)
+    {
+        clearMultiSelection();
+        _selectedIndex = 0;
+        scrollToSelected();
+        return true;
+    }
+
+    if (event.key == Key::End || event.key == Key::Right)
+    {
+        clearMultiSelection();
+        if (!_tracks.empty())
+        {
+            _selectedIndex = static_cast<int>(_tracks.size()) - 1;
+        }
         scrollToSelected();
         return true;
     }
@@ -331,6 +468,7 @@ bool PlaylistView::handleMouse(ventty::MouseEvent const & event)
                 }
                 else
                 {
+                    clearMultiSelection();
                     _selectedIndex = clickedIdx;
                 }
             }

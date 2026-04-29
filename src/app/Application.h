@@ -67,6 +67,7 @@ namespace vtplayer
         void playNext();
         void playPrev();
         void addToPlaylist(std::filesystem::path const &path);
+        void activateFromBrowser(std::vector<std::filesystem::path> const &paths, bool insertFront);
 
         void openPlaylist(std::filesystem::path const &path);
         void newPlaylist();

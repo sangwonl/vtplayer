@@ -9,6 +9,7 @@
 #include <ventty/widget/Widget.h>
 
 #include <functional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,11 @@ public:
     void setTheme(Theme const & theme) { _theme = theme; }
 
     void addTrack(TrackInfo const & track);
+
+    /// Insert a track at `idx` (clamped to [0, tracks.size()]). Shifts the
+    /// playing/selected indices forward for entries at or after `idx`.
+    void insertTrack(int idx, TrackInfo const & track);
+
     void removeSelected();
     void moveSelectedUp();
     void moveSelectedDown();
@@ -48,12 +54,27 @@ public:
     using OnPlayCallback = std::function<void(int index)>;
     void setOnPlay(OnPlayCallback cb) { _onPlay = std::move(cb); }
 
+    /// Fired when a track that was playing got removed (or the playlist was
+    /// replaced/cleared while a track was playing). Application uses this to
+    /// stop audio playback.
+    using OnPlayingRemovedCallback = std::function<void()>;
+    void setOnPlayingRemoved(OnPlayingRemovedCallback cb) { _onPlayingRemoved = std::move(cb); }
+
+    /// Multi-selection state (visual prep — bulk actions are a future feature).
+    bool isMultiSelected(int idx) const { return _multiSelected.count(idx) > 0; }
+    void clearMultiSelection();
+    void selectAll();
+
     void draw(ventty::Window & window) override;
     bool handleKey(ventty::KeyEvent const & event) override;
     bool handleMouse(ventty::MouseEvent const & event);
 
+protected:
+    void onFocusChanged() override;
+
 private:
     void scrollToSelected();
+    void extendSelectionTo(int newIndex);
 
     Theme _theme;
     std::vector<TrackInfo> _tracks;
@@ -61,7 +82,10 @@ private:
     int _selectedIndex = 0;
     int _scrollOffset = 0;
     int _playingIndex = -1;
+    std::set<int> _multiSelected;
+    int _selectionAnchor = -1;
     OnPlayCallback _onPlay;
+    OnPlayingRemovedCallback _onPlayingRemoved;
 };
 
 } // namespace vtplayer

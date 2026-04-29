@@ -9,6 +9,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,9 @@ struct FileEntry
     bool isAudio = false;
     bool isPlaylist = false;  ///< .m3u / .m3u8 file
     bool isParent = false;
+
+    /// True for entries that participate in multi-selection (audio + playlist files).
+    bool isSelectable() const { return isAudio || isPlaylist; }
 };
 
 class FileBrowser : public ventty::Widget
@@ -40,18 +44,33 @@ public:
     FileEntry const * selectedEntry() const;
     std::filesystem::path const & currentDirectory() const { return _currentDir; }
 
-    using OnAddCallback = std::function<void(std::filesystem::path const &)>;
-    void setOnAdd(OnAddCallback cb) { _onAdd = std::move(cb); }
+    /// Called when the user activates audio file(s) (Enter / double-click).
+    /// `paths` contains every audio file to add: the multi-selection set
+    /// when non-empty, otherwise just the cursor entry. `insertFront` is
+    /// true on Shift+Enter (prepend), false otherwise (append). The
+    /// receiver should add all paths in order and play the first one.
+    using OnActivateCallback =
+        std::function<void(std::vector<std::filesystem::path> const &, bool insertFront)>;
+    void setOnActivate(OnActivateCallback cb) { _onActivate = std::move(cb); }
 
     using OnOpenPlaylistCallback = std::function<void(std::filesystem::path const &)>;
     void setOnOpenPlaylist(OnOpenPlaylistCallback cb) { _onOpenPlaylist = std::move(cb); }
+
+    /// Multi-selection (files only — `..` and directories never join the set).
+    bool isMultiSelected(int idx) const { return _multiSelected.count(idx) > 0; }
+    void clearMultiSelection();
+    void selectAllFiles();
 
     void draw(ventty::Window & window) override;
     bool handleKey(ventty::KeyEvent const & event) override;
     bool handleMouse(ventty::MouseEvent const & event);
 
+protected:
+    void onFocusChanged() override;
+
 private:
     void scrollToSelected();
+    void extendSelectionTo(int newIndex);
 
     Theme _theme;
     std::filesystem::path _currentDir;
@@ -60,7 +79,9 @@ private:
     int _scrollOffset = 0;
     bool _showHidden = false;
     std::vector<std::string> _allowedExts{".mp3", ".ogg", ".flac"};
-    OnAddCallback _onAdd;
+    std::set<int> _multiSelected;
+    int _selectionAnchor = -1;
+    OnActivateCallback _onActivate;
     OnOpenPlaylistCallback _onOpenPlaylist;
 };
 

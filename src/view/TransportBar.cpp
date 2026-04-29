@@ -43,11 +43,12 @@ void TransportBar::draw(ventty::Window & window)
     // Embed transport controls into the border line
     int cx = r.x + 2;
 
-    // State icon
+    // State icon — Playing has no glyph (the ▶ on the playlist row is the
+    // canonical "playing" cue). Paused/Stopped still show their state.
     std::string stateIcon;
     switch (_state)
     {
-    case PlayState::Playing: stateIcon = "\xE2\x96\xB6"; break; // ▶
+    case PlayState::Playing: stateIcon = " ";          break;
     case PlayState::Paused:  stateIcon = "\xE2\x8F\xB8"; break; // ⏸
     default:                 stateIcon = "\xE2\x8F\xB9"; break; // ⏹
     }

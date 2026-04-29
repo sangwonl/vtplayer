@@ -167,8 +167,8 @@ namespace vtplayer
         _fileBrowser->setShowHidden(_config.showHidden);
         _fileBrowser->setAllowedExtensions(_config.extensions);
         _fileBrowser->setDirectory(_config.startDirectory);
-        _fileBrowser->setOnAdd([this](std::filesystem::path const &path)
-                               { addToPlaylist(path); });
+        _fileBrowser->setOnActivate([this](std::vector<std::filesystem::path> const &paths, bool insertFront)
+                                    { activateFromBrowser(paths, insertFront); });
         _fileBrowser->setOnOpenPlaylist([this](std::filesystem::path const &path)
                                         { openPlaylist(path); });
 
@@ -176,6 +176,11 @@ namespace vtplayer
         _playlistView->setTheme(_theme);
         _playlistView->setOnPlay([this](int index)
                                  { playTrack(index); });
+        _playlistView->setOnPlayingRemoved([this]
+                                           {
+                                               _audio.stop();
+                                               _playlistView->setPlayingIndex(-1);
+                                           });
 
         // Bootstrap current playlist: prefer Config.playlistCurrentPath, otherwise default.m3u.
         {
@@ -784,6 +789,38 @@ namespace vtplayer
         // Try to get duration by briefly loading
         // For now just add with unknown duration
         _playlistView->addTrack(info);
+    }
+
+    void Application::activateFromBrowser(std::vector<std::filesystem::path> const &paths, bool insertFront)
+    {
+        if (paths.empty()) return;
+
+        auto buildInfo = [](std::filesystem::path const &p)
+        {
+            TrackInfo info;
+            info.path = p;
+            info.title = toNfc(p.stem().string());
+            info.format = TrackInfo::formatFromPath(p);
+            return info;
+        };
+
+        int playIndex;
+        if (insertFront)
+        {
+            // Insert paths[0] at 0, paths[1] at 1, ... so the final order
+            // matches the input list and the first path lands at index 0.
+            for (size_t i = 0; i < paths.size(); ++i)
+            {
+                _playlistView->insertTrack(static_cast<int>(i), buildInfo(paths[i]));
+            }
+            playIndex = 0;
+        }
+        else
+        {
+            playIndex = _playlistView->trackCount();
+            for (auto const &p : paths) _playlistView->addTrack(buildInfo(p));
+        }
+        playTrack(playIndex);
     }
 
     void Application::openPlaylist(std::filesystem::path const &path)
