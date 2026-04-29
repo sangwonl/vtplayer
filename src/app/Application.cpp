@@ -4,6 +4,7 @@
 #include "Application.h"
 
 #include "../playlist/PlaylistRepository.h"
+#include "../util/UnicodeNormalize.h"
 #include "../visualizer/Oscilloscope.h"
 
 #ifdef VTPLAYER_BUILD_BUNDLE
@@ -777,7 +778,7 @@ namespace vtplayer
     {
         TrackInfo info;
         info.path = path;
-        info.title = path.stem().string();
+        info.title = toNfc(path.stem().string());
         info.format = TrackInfo::formatFromPath(path);
 
         // Try to get duration by briefly loading
@@ -800,7 +801,7 @@ namespace vtplayer
         auto loaded = Playlist::load(path);
         if (!loaded)
         {
-            _headerBar->setTrackName("ERR: cannot open " + path.filename().string());
+            _headerBar->setTrackName("ERR: cannot open " + toNfc(path.filename().string()));
             _headerBar->setPlaying(true);
             return;
         }

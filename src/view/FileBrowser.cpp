@@ -3,6 +3,8 @@
 
 #include "FileBrowser.h"
 
+#include "../util/UnicodeNormalize.h"
+
 #include <ventty/art/AsciiArt.h>
 #include <ventty/core/Utf8.h>
 
@@ -103,7 +105,7 @@ void FileBrowser::refresh()
         if (!_showHidden && name[0] == '.') continue;
 
         FileEntry fe;
-        fe.name = name;
+        fe.name = toNfc(name);
         fe.path = entry.path();
 
         if (entry.is_directory(ec))
@@ -177,6 +179,7 @@ void FileBrowser::draw(ventty::Window & window)
     {
         dirName = _currentDir.string();
     }
+    dirName = toNfc(dirName);
     std::string header = " [" + dirName + "]";
     if (static_cast<int>(header.size()) > r.width - 2)
     {

@@ -31,8 +31,8 @@ public:
     std::filesystem::path const & path() const { return _path; }
     void setPath(std::filesystem::path path) { _path = std::move(path); }
 
-    /// Stem of the file (e.g. "default" for "default.m3u").
-    std::string name() const { return _path.stem().string(); }
+    /// Stem of the file (e.g. "default" for "default.m3u"). NFC-normalized.
+    std::string name() const;
 
     std::vector<TrackInfo> const & tracks() const { return _tracks; }
     void setTracks(std::vector<TrackInfo> tracks) { _tracks = std::move(tracks); }

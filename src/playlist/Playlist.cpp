@@ -3,6 +3,8 @@
 
 #include "Playlist.h"
 
+#include "../util/UnicodeNormalize.h"
+
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -83,6 +85,11 @@ ExtInf parseExtInf(std::string const & line)
 
 } // namespace
 
+std::string Playlist::name() const
+{
+    return toNfc(_path.stem().string());
+}
+
 std::optional<Playlist> Playlist::load(std::filesystem::path const & path)
 {
     std::ifstream file(path);
@@ -145,6 +152,8 @@ std::optional<Playlist> Playlist::load(std::filesystem::path const & path)
         {
             info.title = info.path.stem().string();
         }
+        info.artist = toNfc(info.artist);
+        info.title  = toNfc(info.title);
 
         pl._tracks.push_back(std::move(info));
         havePending = false;

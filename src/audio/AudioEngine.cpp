@@ -7,6 +7,8 @@
 
 #include "AudioEngine.h"
 
+#include "../util/UnicodeNormalize.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -78,7 +80,7 @@ bool AudioEngine::load(std::filesystem::path const & path)
 
     _currentTrack.path = path;
     _currentTrack.format = _currentFormat;
-    _currentTrack.title = path.stem().string();
+    _currentTrack.title = vtplayer::toNfc(path.stem().string());
     _currentTrack.artist.clear();
     _currentTrack.duration = 0.0f;
 
