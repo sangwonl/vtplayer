@@ -118,7 +118,12 @@ void FileBrowser::refresh()
             {
                 c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
             }
-            if (std::find(_allowedExts.begin(), _allowedExts.end(), ext) != _allowedExts.end())
+            if (ext == ".m3u" || ext == ".m3u8")
+            {
+                fe.isPlaylist = true;
+                files.push_back(std::move(fe));
+            }
+            else if (std::find(_allowedExts.begin(), _allowedExts.end(), ext) != _allowedExts.end())
             {
                 fe.isAudio = true;
                 files.push_back(std::move(fe));
@@ -233,6 +238,10 @@ void FileBrowser::draw(ventty::Window & window)
         {
             icon = " \xE2\x96\xB8 "; // ▸
         }
+        else if (entry.isPlaylist)
+        {
+            icon = " \xE2\x89\xA1 "; // ≡
+        }
         else
         {
             icon = " \xE2\x99\xAA "; // ♪
@@ -320,6 +329,11 @@ bool FileBrowser::handleKey(ventty::KeyEvent const & event)
             setDirectory(entry->path);
             return true;
         }
+        if (entry->isPlaylist && _onOpenPlaylist)
+        {
+            _onOpenPlaylist(entry->path);
+            return true;
+        }
         if (entry->isAudio && _onAdd)
         {
             _onAdd(entry->path);
@@ -388,6 +402,10 @@ bool FileBrowser::handleMouse(ventty::MouseEvent const & event)
                     if (entry && entry->isDirectory)
                     {
                         setDirectory(entry->path);
+                    }
+                    else if (entry && entry->isPlaylist && _onOpenPlaylist)
+                    {
+                        _onOpenPlaylist(entry->path);
                     }
                     else if (entry && entry->isAudio && _onAdd)
                     {

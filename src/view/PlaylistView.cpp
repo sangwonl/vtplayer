@@ -82,6 +82,14 @@ void PlaylistView::clear()
     _playingIndex = -1;
 }
 
+void PlaylistView::setTracks(std::vector<TrackInfo> tracks)
+{
+    _tracks = std::move(tracks);
+    _selectedIndex = 0;
+    _scrollOffset = 0;
+    _playingIndex = -1;
+}
+
 void PlaylistView::setSelectedIndex(int idx)
 {
     _selectedIndex = std::clamp(idx, 0, std::max(0, static_cast<int>(_tracks.size()) - 1));
@@ -136,6 +144,10 @@ void PlaylistView::draw(ventty::Window & window)
     window.fill(r.x, r.y, r.width - 1, 1, U' ', headerStyle);
 
     std::string header = " Playlist";
+    if (!_playlistName.empty())
+    {
+        header += ": " + _playlistName;
+    }
     if (!_tracks.empty())
     {
         header += " (" + std::to_string(_tracks.size()) + ")";

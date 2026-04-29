@@ -26,6 +26,15 @@ public:
     void moveSelectedDown();
     void clear();
 
+    /// Replace the full track list (used when switching playlists). Resets scroll and selection.
+    void setTracks(std::vector<TrackInfo> tracks);
+
+    /// Snapshot of the current tracks for persistence.
+    std::vector<TrackInfo> const & tracks() const { return _tracks; }
+
+    /// Name displayed in the header (usually the playlist file stem).
+    void setCurrentPlaylistName(std::string name) { _playlistName = std::move(name); }
+
     int selectedIndex() const { return _selectedIndex; }
     void setSelectedIndex(int idx);
     int playingIndex() const { return _playingIndex; }
@@ -48,6 +57,7 @@ private:
 
     Theme _theme;
     std::vector<TrackInfo> _tracks;
+    std::string _playlistName;
     int _selectedIndex = 0;
     int _scrollOffset = 0;
     int _playingIndex = -1;

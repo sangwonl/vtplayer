@@ -35,6 +35,12 @@ add_executable(vtplayer
     # config
     config/Config.h
     config/Config.cpp
+
+    # playlist
+    playlist/Playlist.h
+    playlist/Playlist.cpp
+    playlist/PlaylistRepository.h
+    playlist/PlaylistRepository.cpp
 )
 
 target_include_directories(vtplayer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

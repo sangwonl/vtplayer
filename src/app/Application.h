@@ -5,6 +5,7 @@
 
 #include "../audio/AudioEngine.h"
 #include "../config/Config.h"
+#include "../playlist/Playlist.h"
 #include "../view/ContextMenu.h"
 #include "../view/FileBrowser.h"
 #include "../view/HeaderBar.h"
@@ -66,6 +67,10 @@ namespace vtplayer
         void playPrev();
         void addToPlaylist(std::filesystem::path const &path);
 
+        void openPlaylist(std::filesystem::path const &path);
+        void newPlaylist();
+        void saveCurrentPlaylist();
+
         bool _running = false;
         std::unique_ptr<ventty::TerminalBase> _terminal;
         ventty::Window *_rootWindow = nullptr;
@@ -73,6 +78,9 @@ namespace vtplayer
         // Audio
         AudioEngine _audio;
         Config _config;
+
+        // Current playlist (persisted to M3U on disk)
+        Playlist _currentPlaylist;
 
         // UI state
         Screen _screen = Screen::Browser;

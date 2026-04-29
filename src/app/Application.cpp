@@ -3,6 +3,8 @@
 
 #include "Application.h"
 
+#include "../playlist/PlaylistRepository.h"
+
 #ifdef VTPLAYER_BUILD_BUNDLE
 #include <ventty/ventty_gfx.h>
 #else
@@ -165,11 +167,44 @@ namespace vtplayer
         _fileBrowser->setDirectory(_config.startDirectory);
         _fileBrowser->setOnAdd([this](std::filesystem::path const &path)
                                { addToPlaylist(path); });
+        _fileBrowser->setOnOpenPlaylist([this](std::filesystem::path const &path)
+                                        { openPlaylist(path); });
 
         _playlistView = std::make_unique<PlaylistView>();
         _playlistView->setTheme(_theme);
         _playlistView->setOnPlay([this](int index)
                                  { playTrack(index); });
+
+        // Bootstrap current playlist: prefer Config.playlistCurrentPath, otherwise default.m3u.
+        {
+            PlaylistRepository::ensureDirectory();
+            auto target = _config.playlistCurrentPath;
+            bool usingDefault = false;
+            if (target.empty() || !std::filesystem::exists(target))
+            {
+                target = PlaylistRepository::defaultPlaylistPath();
+                usingDefault = true;
+            }
+
+            if (auto loaded = Playlist::load(target))
+            {
+                _currentPlaylist = std::move(*loaded);
+            }
+            else
+            {
+                _currentPlaylist = PlaylistRepository::ensureDefault();
+                usingDefault = true;
+            }
+
+            _playlistView->setTracks(_currentPlaylist.tracks());
+            _playlistView->setCurrentPlaylistName(_currentPlaylist.name());
+
+            if (usingDefault || _config.playlistCurrentPath != _currentPlaylist.path())
+            {
+                _config.playlistCurrentPath = _currentPlaylist.path();
+                _config.save();
+            }
+        }
 
         _transportBar = std::make_unique<TransportBar>();
         _transportBar->setTheme(_theme);
@@ -182,6 +217,8 @@ namespace vtplayer
         _contextMenu->setTheme(_theme);
         _contextMenu->setTitle("Menu");
         _contextMenu->setItems({
+            "New playlist",
+            "Save playlist",
             "Set current directory as start directory",
             "Exit",
         });
@@ -202,6 +239,13 @@ namespace vtplayer
         // Sync runtime-mutable settings back before persisting.
         _config.autoGain = _audio.autoGainEnabled();
         _config.save();
+
+        // Persist the current playlist's track list to disk.
+        if (!_currentPlaylist.path().empty() && _playlistView)
+        {
+            _currentPlaylist.setTracks(_playlistView->tracks());
+            _currentPlaylist.save();
+        }
 
         // Audio must stop before terminal restores — otherwise audio thread
         // output can corrupt the restored terminal.
@@ -608,6 +652,13 @@ namespace vtplayer
             _terminal->forceRedraw();
             return;
         }
+
+        // Ctrl+S: save current playlist
+        if (event.ctrl && event.key == Key::Char && (ch == 's' || ch == 'S' || ch == 19))
+        {
+            saveCurrentPlaylist();
+            return;
+        }
     }
 
     void Application::openContextMenu()
@@ -620,18 +671,26 @@ namespace vtplayer
     void Application::onContextMenuSelect(int index)
     {
         // Menu order (Exit is always last):
-        //   0 = Set current directory as start directory
-        //   1 = Exit
+        //   0 = New playlist
+        //   1 = Save playlist
+        //   2 = Set current directory as start directory
+        //   3 = Exit
         switch (index)
         {
         case 0:
+            newPlaylist();
+            break;
+        case 1:
+            saveCurrentPlaylist();
+            break;
+        case 2:
             if (_fileBrowser)
             {
                 _config.startDirectory = _fileBrowser->currentDirectory();
                 _config.save();
             }
             break;
-        case 1:
+        case 3:
             quit();
             break;
         default:
@@ -692,6 +751,68 @@ namespace vtplayer
         // Try to get duration by briefly loading
         // For now just add with unknown duration
         _playlistView->addTrack(info);
+    }
+
+    void Application::openPlaylist(std::filesystem::path const &path)
+    {
+        // Persist any pending edits in the outgoing playlist before switching.
+        if (!_currentPlaylist.path().empty() && _playlistView)
+        {
+            _currentPlaylist.setTracks(_playlistView->tracks());
+            _currentPlaylist.save();
+        }
+
+        _audio.stop();
+        if (_playlistView) _playlistView->setPlayingIndex(-1);
+
+        auto loaded = Playlist::load(path);
+        if (!loaded)
+        {
+            _headerBar->setTrackName("ERR: cannot open " + path.filename().string());
+            _headerBar->setPlaying(true);
+            return;
+        }
+
+        _currentPlaylist = std::move(*loaded);
+        _playlistView->setTracks(_currentPlaylist.tracks());
+        _playlistView->setCurrentPlaylistName(_currentPlaylist.name());
+
+        _config.playlistCurrentPath = _currentPlaylist.path();
+        _config.save();
+    }
+
+    void Application::newPlaylist()
+    {
+        // Save the outgoing playlist's edits first.
+        if (!_currentPlaylist.path().empty() && _playlistView)
+        {
+            _currentPlaylist.setTracks(_playlistView->tracks());
+            _currentPlaylist.save();
+        }
+
+        _audio.stop();
+        if (_playlistView) _playlistView->setPlayingIndex(-1);
+
+        auto path = PlaylistRepository::newUntitledPath();
+        _currentPlaylist = Playlist(path);
+        _currentPlaylist.save();  // materialize the empty file on disk
+
+        if (_playlistView)
+        {
+            _playlistView->setTracks({});
+            _playlistView->setCurrentPlaylistName(_currentPlaylist.name());
+        }
+
+        _config.playlistCurrentPath = _currentPlaylist.path();
+        _config.save();
+    }
+
+    void Application::saveCurrentPlaylist()
+    {
+        if (_currentPlaylist.path().empty() || !_playlistView) return;
+
+        _currentPlaylist.setTracks(_playlistView->tracks());
+        _currentPlaylist.save();
     }
 
 } // namespace vtplayer

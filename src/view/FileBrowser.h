@@ -21,6 +21,7 @@ struct FileEntry
     std::filesystem::path path;
     bool isDirectory = false;
     bool isAudio = false;
+    bool isPlaylist = false;  ///< .m3u / .m3u8 file
     bool isParent = false;
 };
 
@@ -42,6 +43,9 @@ public:
     using OnAddCallback = std::function<void(std::filesystem::path const &)>;
     void setOnAdd(OnAddCallback cb) { _onAdd = std::move(cb); }
 
+    using OnOpenPlaylistCallback = std::function<void(std::filesystem::path const &)>;
+    void setOnOpenPlaylist(OnOpenPlaylistCallback cb) { _onOpenPlaylist = std::move(cb); }
+
     void draw(ventty::Window & window) override;
     bool handleKey(ventty::KeyEvent const & event) override;
     bool handleMouse(ventty::MouseEvent const & event);
@@ -57,6 +61,7 @@ private:
     bool _showHidden = false;
     std::vector<std::string> _allowedExts{".mp3", ".ogg", ".flac"};
     OnAddCallback _onAdd;
+    OnOpenPlaylistCallback _onOpenPlaylist;
 };
 
 } // namespace vtplayer
