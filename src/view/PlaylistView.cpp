@@ -30,30 +30,40 @@ void PlaylistView::insertTrack(int idx, TrackInfo const & track)
 
 void PlaylistView::removeSelected()
 {
-    if (_selectedIndex < 0 || _selectedIndex >= static_cast<int>(_tracks.size()))
+    if (_tracks.empty()) return;
+
+    std::set<int> targets = _multiSelected;
+    if (_selectedIndex >= 0 && _selectedIndex < static_cast<int>(_tracks.size()))
     {
-        return;
+        targets.insert(_selectedIndex);
+    }
+    if (targets.empty()) return;
+
+    bool const removingPlaying = (_playingIndex >= 0) && targets.count(_playingIndex) > 0;
+    int const firstRemoved = *targets.begin();
+
+    // Erase from highest to lowest so earlier indices stay valid.
+    for (auto it = targets.rbegin(); it != targets.rend(); ++it)
+    {
+        int const idx = *it;
+        if (idx < 0 || idx >= static_cast<int>(_tracks.size())) continue;
+        _tracks.erase(_tracks.begin() + idx);
+        if (!removingPlaying && _playingIndex > idx) _playingIndex--;
     }
 
-    bool const removingPlaying = (_playingIndex == _selectedIndex);
+    if (removingPlaying) _playingIndex = -1;
 
-    _tracks.erase(_tracks.begin() + _selectedIndex);
-
-    if (removingPlaying)
+    if (_tracks.empty())
     {
-        _playingIndex = -1;
+        _selectedIndex = 0;
     }
-    else if (_playingIndex > _selectedIndex)
+    else
     {
-        _playingIndex--;
-    }
-
-    if (_selectedIndex >= static_cast<int>(_tracks.size()) && !_tracks.empty())
-    {
-        _selectedIndex = static_cast<int>(_tracks.size()) - 1;
+        _selectedIndex = std::min(firstRemoved, static_cast<int>(_tracks.size()) - 1);
     }
 
     clearMultiSelection();
+    scrollToSelected();
 
     if (removingPlaying && _onPlayingRemoved)
     {
@@ -411,6 +421,7 @@ bool PlaylistView::handleKey(ventty::KeyEvent const & event)
     }
 
     if (event.key == Key::Delete ||
+        event.key == Key::Backspace ||
         (event.key == Key::Char && (event.ch == 'd' || event.ch == 'D')))
     {
         removeSelected();
