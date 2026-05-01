@@ -22,6 +22,18 @@ namespace vtplayer
     void AudioSpectrum::update(AudioEngine const &engine)
     {
         int const numBars = static_cast<int>(_barValues.size());
+
+        // When not actively playing, the audio thread isn't writing to the
+        // visualization ring buffer. getSamples would just hand back the
+        // last samples it saw, keeping the FFT (and the bars) lit on stale
+        // data — that's why bars used to hover at ~50% long after a track
+        // ended. Decay quickly toward zero instead.
+        if (engine.state() != PlayState::Playing)
+        {
+            for (auto &v : _barValues) v *= 0.6f;
+            return;
+        }
+
         float samples[512];
         engine.getSamples(samples, 512);
 
@@ -40,8 +52,12 @@ namespace vtplayer
         float mag[256];
         _fft.magnitude(fftOut, mag);
 
-        // Group into logarithmic frequency bands
-        for (int i = 0; i < numBars; ++i)
+        // Group into logarithmic frequency bands. The final band sits right
+        // up against Nyquist (≈19.6–22 kHz at 44.1 kHz Fs) where MP3's low-
+        // pass leaves nothing — that bar always ended up conspicuously low.
+        // Skip it; draw() also drops it so the remaining bars take the full
+        // width.
+        for (int i = 0; i < numBars - 1; ++i)
         {
             float frac0 = static_cast<float>(i) / static_cast<float>(numBars);
             float frac1 = static_cast<float>(i + 1) / static_cast<float>(numBars);
@@ -56,33 +72,99 @@ namespace vtplayer
             {
                 sum += mag[b];
             }
-            float avg = sum / static_cast<float>(bin1 - bin0);
 
-            // Normalize (log scale). Floor at -50 dB, headroom up to +30 dB —
-            // typical program material now peaks around 60–70% rather than
-            // saturating at 100%.
-            float db = 20.0f * std::log10(avg + 1e-10f);
-            float normalized = (db + 50.0f) / 80.0f;
+            // Sum (not average) so log-spaced bars at the high end aren't
+            // penalized for spanning many FFT bins.
+            float db = 20.0f * std::log10(sum + 1e-10f);
+
+            // Per-band linear-in-dB tilt that compensates music's natural
+            // high-frequency rolloff (and MP3's low-pass). 0 dB at the
+            // lowest band, +18 dB at the top — enough to lift the right
+            // side off the floor without amplifying the noise floor when
+            // the band is genuinely quiet.
+            float tiltDb = (numBars > 1)
+                               ? (static_cast<float>(i) / static_cast<float>(numBars - 1)) * 18.0f
+                               : 0.0f;
+            db += tiltDb;
+
+            // Floor at -35 dB, headroom up to +35 dB. Tighter than before so
+            // truly quiet bands collapse to zero instead of hovering at the
+            // tilt-amplified noise level.
+            float normalized = (db + 35.0f) / 70.0f;
             normalized = std::clamp(normalized, 0.0f, 1.0f);
 
             // Smooth with decay
             _barValues[i] = std::max(normalized, _barValues[i] * 0.82f);
             _peakValues[i] = std::max(_barValues[i], _peakValues[i] * 0.96f);
         }
+        // Keep the dropped Nyquist-edge bar pinned to silence so the trail
+        // buffer can decay it cleanly even after switching tracks.
+        if (numBars > 0)
+        {
+            _barValues[numBars - 1] = 0.0f;
+            _peakValues[numBars - 1] = 0.0f;
+        }
     }
 
     void AudioSpectrum::draw(ventty::Window &window, int x, int y, int w, int h)
     {
         int const numBars = static_cast<int>(_barValues.size());
-        int totalBars = std::min(numBars, w);
-        int barW = w / totalBars;
-        if (barW < 1)
-            barW = 1;
-        totalBars = w / barW;
+        if (w <= 0 || h <= 0 || numBars <= 0)
+            return;
+        // Spread numBars evenly across the full width using floor((i*w)/N)
+        // boundaries. With plain integer division (barW = w / N) the right
+        // (w - barW*N) columns end up perpetually blank — that's why the
+        // right slice of the spectrum looked empty regardless of audio.
+        // We also drop the very last band (see update()'s `numBars - 1`
+        // loop) since it sits in the Nyquist dead zone.
+        int const drawBars = numBars - 1;
+        if (drawBars <= 0)
+            return;
+        int totalBars = std::min(drawBars, w);
 
-        for (int i = 0; i < totalBars && i < numBars; ++i)
+        // Per-bar trail buffers: one brightness value per row, decayed each
+        // frame so a dropped bar leaves a fading ghost in the cells it just
+        // vacated. 0.951 / frame at ~60 fps reaches ~5% after ~1000 ms.
+        if (static_cast<int>(_trail.size()) != numBars)
+            _trail.assign(numBars, std::vector<float>(h, 0.0f));
+        for (auto &col : _trail)
         {
-            int bx = x + i * barW;
+            if (static_cast<int>(col.size()) != h)
+                col.assign(h, 0.0f);
+        }
+        constexpr float kTrailDecay = 0.951f;
+        constexpr float kTrailMin = 0.04f;
+        for (auto &col : _trail)
+            for (auto &v : col)
+                v *= kTrailDecay;
+
+        Color const bg = _theme.background;
+        Color const trailMax = _theme.visTrailFg;
+
+        // Pre-compute the row-wise gradient: bottom row = visBarLow (deep
+        // purple), top row = visBarHigh (light purple), with visBarMid
+        // anchoring the midpoint. All bars share the same column of colors;
+        // only their height differs.
+        std::vector<Color> rowColor(h);
+        for (int row = 0; row < h; ++row)
+        {
+            float rowFrac = (h > 1)
+                                ? static_cast<float>(row) / static_cast<float>(h - 1)
+                                : 0.0f;
+            if (rowFrac < 0.5f)
+                rowColor[row] = lerpColor(_theme.visBarLow, _theme.visBarMid, rowFrac * 2.0f);
+            else
+                rowColor[row] = lerpColor(_theme.visBarMid, _theme.visBarHigh, (rowFrac - 0.5f) * 2.0f);
+        }
+
+        for (int i = 0; i < totalBars; ++i)
+        {
+            int bx0 = x + (i * w) / totalBars;
+            int bx1 = x + ((i + 1) * w) / totalBars;
+            int barW = bx1 - bx0;
+            if (barW < 1)
+                continue;
+            int bx = bx0;
             float val = _barValues[i];
 
             // Map value to height in 1/8 increments
@@ -90,29 +172,44 @@ namespace vtplayer
             int fullRows = static_cast<int>(heightF) / 8;
             int partial = static_cast<int>(heightF) % 8;
 
+            // Refresh trail for currently-lit rows so the live bar stays solid.
+            for (int row = 0; row < fullRows && row < h; ++row)
+                _trail[i][row] = 1.0f;
+            if (fullRows < h && partial > 0)
+            {
+                float p = static_cast<float>(partial) / 8.0f;
+                if (_trail[i][fullRows] < p)
+                    _trail[i][fullRows] = p;
+            }
+
             for (int row = 0; row < h; ++row)
             {
                 int drawY = y + h - 1 - row;
                 char32_t ch = U' ';
-                Color fg = _theme.visBarLow;
-
-                // Color gradient: low → mid → high
-                float rowFrac = static_cast<float>(row) / static_cast<float>(h);
-                if (rowFrac > 0.75f)
-                    fg = _theme.visBarHigh;
-                else if (rowFrac > 0.45f)
-                    fg = _theme.visBarMid;
+                Color fg = bg;
 
                 if (row < fullRows)
                 {
-                    ch = ventty::VBAR[8]; // full block
+                    ch = ventty::VBAR[8];
+                    fg = rowColor[row];
                 }
                 else if (row == fullRows && partial > 0)
                 {
                     ch = ventty::VBAR[partial];
+                    fg = rowColor[row];
+                }
+                else
+                {
+                    float t = _trail[i][row];
+                    if (t <= kTrailMin)
+                        continue; // window is cleared each frame; nothing to draw
+                    // Trail fades along the gray axis only (gray → black),
+                    // independent of the bar's purple color.
+                    ch = ventty::VBAR[8];
+                    fg = lerpColor(bg, trailMax, t);
                 }
 
-                ventty::Style style{fg, _theme.background};
+                ventty::Style style{fg, bg};
                 for (int bw = 0; bw < barW && bx + bw < x + w; ++bw)
                 {
                     window.putChar(bx + bw, drawY, ch, style);

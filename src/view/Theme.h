@@ -55,10 +55,14 @@ namespace vtplayer
         Color transportFnKeyFg{0xC8, 0xA2, 0xD0};
         Color transportFnLabelFg{0x66, 0x5C, 0x70};
 
-        // Visualizer
-        Color visBarLow{0x6A, 0x8A, 0x6A};
-        Color visBarMid{0xB0, 0x98, 0xC0};
-        Color visBarHigh{0xC0, 0x70, 0x88};
+        // Visualizer — spectrum gradient runs vertically along each bar:
+        //   bottom row = visBarLow (deep purple) → top row = visBarHigh (light purple).
+        // visBarMid is the midpoint stop and is also reused by the oscilloscope trace.
+        // visTrailFg is the brightest shade of the fade-to-black trail.
+        Color visBarLow{0x4A, 0x2A, 0x88};
+        Color visBarMid{0x8A, 0x6E, 0xC0};
+        Color visBarHigh{0xE0, 0xC8, 0xF5};
+        Color visTrailFg{0x4D, 0x4D, 0x4D};
         Color visLabelFg{0x3A, 0x32, 0x45};
 
         // Separator
@@ -126,6 +130,7 @@ namespace vtplayer
             set("vis_bar_low", visBarLow);
             set("vis_bar_mid", visBarMid);
             set("vis_bar_high", visBarHigh);
+            set("vis_trail_fg", visTrailFg);
             set("vis_label_fg", visLabelFg);
 
             // Separator
