@@ -3,6 +3,8 @@
 
 #include "PlaylistView.h"
 
+#include "../util/UnicodeNormalize.h"
+
 #include <ventty/art/AsciiArt.h>
 
 #include <algorithm>
@@ -226,6 +228,7 @@ void PlaylistView::draw(ventty::Window & window)
     {
         header += " (" + std::to_string(_tracks.size()) + ")";
     }
+    header = truncateToWidth(header, r.width - 1, "...");
     window.drawText(r.x, r.y, header, headerStyle);
 
     // Separator
@@ -296,14 +299,10 @@ void PlaylistView::draw(ventty::Window & window)
             window.drawText(r.x + 1, y, numBuf, indexStyle);
         }
 
-        // Track name
-        std::string name = track.title;
-        int durLen = 6; // " MM:SS"
-        int maxNameW = contentW - 5 - durLen; // 4 for index, 1 padding
-        if (static_cast<int>(name.size()) > maxNameW)
-        {
-            name = name.substr(0, maxNameW - 2) + "..";
-        }
+        // Track name (display-width truncation; CJK = 2 cells per codepoint)
+        int const durLen = 6; // " MM:SS"
+        int const maxNameW = contentW - 5 - durLen; // 4 for index, 1 padding
+        std::string name = truncateToWidth(track.title, maxNameW);
         window.drawText(r.x + 5, y, name, style);
 
         // Duration (right-aligned)

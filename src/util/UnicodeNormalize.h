@@ -15,4 +15,11 @@ namespace vtplayer
 /// 정규화하기 위한 용도로 사용한다.
 std::string toNfc(std::string_view str);
 
+/// 표시 폭(셀 단위) 기준으로 문자열을 잘라낸다. 한글·CJK처럼
+/// 전각 문자가 차지하는 2셀을 정확히 반영하며, UTF-8 멀티바이트
+/// 시퀀스를 절대 중간에 자르지 않는다. 잘림이 발생하면 ellipsis를
+/// 덧붙이고, 최종 결과의 표시 폭은 maxWidth를 넘지 않는다.
+std::string truncateToWidth(std::string_view str, int maxWidth,
+                            std::string_view ellipsis = "..");
+
 } // namespace vtplayer

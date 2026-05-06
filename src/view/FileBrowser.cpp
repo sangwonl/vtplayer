@@ -222,10 +222,7 @@ void FileBrowser::draw(ventty::Window & window)
     }
     dirName = toNfc(dirName);
     std::string header = " [" + dirName + "]";
-    if (static_cast<int>(header.size()) > r.width - 2)
-    {
-        header = header.substr(0, r.width - 5) + "...";
-    }
+    header = truncateToWidth(header, r.width - 2, "...");
     window.drawText(r.x + 1, r.y, header, headerStyle);
 
     // Separator line
@@ -303,12 +300,8 @@ void FileBrowser::draw(ventty::Window & window)
         window.drawText(r.x + 1, y, icon, style);
         int textX = r.x + 1 + static_cast<int>(ventty::stringWidth(icon));
 
-        std::string name = entry.name;
-        int maxNameW = contentW - 4;
-        if (static_cast<int>(name.size()) > maxNameW)
-        {
-            name = name.substr(0, maxNameW - 2) + "..";
-        }
+        int const maxNameW = contentW - 4;
+        std::string name = truncateToWidth(entry.name, maxNameW);
         window.drawText(textX, y, name, style);
     }
 }

@@ -10,7 +10,6 @@
 #include <ventty/widget/Widget.h>
 
 #include <memory>
-#include <string>
 
 namespace vtplayer
 {
@@ -33,17 +32,9 @@ namespace vtplayer
 
         void draw(ventty::Window &window) override;
 
-        void setTrackName(std::string const &name) { _trackName = name; }
-        void setTrackInfo(std::string const &info) { _trackInfo = info; }
-
     private:
-        void drawTrackBox(ventty::Window &window, int x, int y, int w);
-
         Theme _theme;
         std::unique_ptr<Visualizer> _vis;
-
-        std::string _trackName;
-        std::string _trackInfo;
     };
 
 } // namespace vtplayer

@@ -3,6 +3,8 @@
 
 #include "TransportBar.h"
 
+#include "../util/UnicodeNormalize.h"
+
 #include <ventty/art/AsciiArt.h>
 #include <ventty/core/Utf8.h>
 
@@ -56,18 +58,15 @@ void TransportBar::draw(ventty::Window & window)
                     ventty::Style{_theme.transportStateFg, _theme.transportBg});
     cx += 2;
 
-    // Track name (truncated)
+    // Track name (display-width truncation; advance cx by display width, not byte size)
     if (!_trackName.empty())
     {
+        int const maxNameW = r.width / 3;
         std::string name = " " + _trackName + " ";
-        int maxNameLen = r.width / 3;
-        if (static_cast<int>(name.size()) > maxNameLen)
-        {
-            name = name.substr(0, maxNameLen - 2) + ".. ";
-        }
+        name = truncateToWidth(name, maxNameW, ".. ");
         window.drawText(cx, y1, name,
                         ventty::Style{_theme.transportTimeFg, _theme.transportBg});
-        cx += static_cast<int>(name.size());
+        cx += ventty::stringWidth(name);
     }
 
     // Progress bar

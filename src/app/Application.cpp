@@ -167,8 +167,8 @@ namespace vtplayer
         _fileBrowser->setShowHidden(_config.showHidden);
         _fileBrowser->setAllowedExtensions(_config.extensions);
         _fileBrowser->setDirectory(_config.startDirectory);
-        _fileBrowser->setOnActivate([this](std::vector<std::filesystem::path> const &paths, bool insertFront)
-                                    { activateFromBrowser(paths, insertFront); });
+        _fileBrowser->setOnActivate([this](std::vector<std::filesystem::path> const &paths, bool quietAppend)
+                                    { activateFromBrowser(paths, quietAppend); });
         _fileBrowser->setOnOpenPlaylist([this](std::filesystem::path const &path)
                                         { openPlaylist(path); });
 
@@ -300,30 +300,7 @@ namespace vtplayer
 
     void Application::updateUI()
     {
-        // Update header
         auto state = _audio.state();
-        bool playing = (state == PlayState::Playing);
-        _headerBar->setPlaying(playing || state == PlayState::Paused);
-
-        if (playing || state == PlayState::Paused)
-        {
-            _headerBar->setTrackName(_audio.currentTrack().title);
-
-            float pos = _audio.position();
-            float dur = _audio.duration();
-            int pm = static_cast<int>(pos) / 60;
-            int ps = static_cast<int>(pos) % 60;
-            int dm = static_cast<int>(dur) / 60;
-            int ds = static_cast<int>(dur) % 60;
-            char buf[32];
-            std::snprintf(buf, sizeof(buf), "%02d:%02d/%02d:%02d", pm, ps, dm, ds);
-            _headerBar->setTrackTime(buf);
-        }
-        else
-        {
-            _headerBar->setTrackName("");
-            _headerBar->setTrackTime("");
-        }
 
         // Auto-advance: audio callback signals track ended via flag,
         // then UI thread safely stops and loads next track.
@@ -347,27 +324,6 @@ namespace vtplayer
         if (_screen == Screen::Visualizer)
         {
             _visualizerView->update(_audio);
-            _visualizerView->setTrackName(_audio.currentTrack().title);
-
-            // Build track info string
-            std::string info;
-            auto const &track = _audio.currentTrack();
-            switch (track.format)
-            {
-            case AudioFormat::Mp3:
-                info = "MP3";
-                break;
-            case AudioFormat::Ogg:
-                info = "OGG";
-                break;
-            case AudioFormat::Flac:
-                info = "FLAC";
-                break;
-            default:
-                break;
-            }
-            info += " | " + std::to_string(AudioEngine::SAMPLE_RATE) + "Hz | Stereo";
-            _visualizerView->setTrackInfo(info);
         }
     }
 
@@ -752,8 +708,6 @@ namespace vtplayer
         else
         {
             _playlistView->setPlayingIndex(-1);
-            _headerBar->setTrackName("ERR: " + _audio.lastError());
-            _headerBar->setPlaying(true);
         }
     }
 
@@ -791,7 +745,7 @@ namespace vtplayer
         _playlistView->addTrack(info);
     }
 
-    void Application::activateFromBrowser(std::vector<std::filesystem::path> const &paths, bool insertFront)
+    void Application::activateFromBrowser(std::vector<std::filesystem::path> const &paths, bool quietAppend)
     {
         if (paths.empty()) return;
 
@@ -804,23 +758,16 @@ namespace vtplayer
             return info;
         };
 
-        int playIndex;
-        if (insertFront)
+        // Always append to the end of the playlist. With Shift+Enter (quietAppend)
+        // the current playback state stays untouched; without Shift we play the
+        // first newly-added track.
+        int const playIndex = _playlistView->trackCount();
+        for (auto const &p : paths) _playlistView->addTrack(buildInfo(p));
+
+        if (!quietAppend)
         {
-            // Insert paths[0] at 0, paths[1] at 1, ... so the final order
-            // matches the input list and the first path lands at index 0.
-            for (size_t i = 0; i < paths.size(); ++i)
-            {
-                _playlistView->insertTrack(static_cast<int>(i), buildInfo(paths[i]));
-            }
-            playIndex = 0;
+            playTrack(playIndex);
         }
-        else
-        {
-            playIndex = _playlistView->trackCount();
-            for (auto const &p : paths) _playlistView->addTrack(buildInfo(p));
-        }
-        playTrack(playIndex);
     }
 
     void Application::openPlaylist(std::filesystem::path const &path)
@@ -838,8 +785,6 @@ namespace vtplayer
         auto loaded = Playlist::load(path);
         if (!loaded)
         {
-            _headerBar->setTrackName("ERR: cannot open " + toNfc(path.filename().string()));
-            _headerBar->setPlaying(true);
             return;
         }
 

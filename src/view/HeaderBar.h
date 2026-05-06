@@ -7,8 +7,6 @@
 
 #include <ventty/widget/Widget.h>
 
-#include <string>
-
 namespace vtplayer
 {
 
@@ -16,17 +14,11 @@ class HeaderBar : public ventty::Widget
 {
 public:
     void setTheme(Theme const & theme) { _theme = theme; }
-    void setTrackName(std::string const & name) { _trackName = name; }
-    void setTrackTime(std::string const & time) { _trackTime = time; }
-    void setPlaying(bool playing) { _playing = playing; }
 
     void draw(ventty::Window & window) override;
 
 private:
     Theme _theme;
-    std::string _trackName;
-    std::string _trackTime;
-    bool _playing = false;
 };
 
 } // namespace vtplayer

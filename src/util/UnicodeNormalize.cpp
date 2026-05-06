@@ -66,4 +66,33 @@ std::string toNfc(std::string_view str)
     return ventty::fromCodepoints(out);
 }
 
+std::string truncateToWidth(std::string_view str, int maxWidth,
+                            std::string_view ellipsis)
+{
+    if (maxWidth <= 0) return {};
+
+    int const totalW = ventty::stringWidth(str);
+    if (totalW <= maxWidth) return std::string(str);
+
+    int const ellipsisW = ventty::stringWidth(ellipsis);
+    bool useEllipsis = ellipsisW <= maxWidth;
+    int budget = useEllipsis ? (maxWidth - ellipsisW) : maxWidth;
+
+    std::string out;
+    out.reserve(str.size());
+    int width = 0;
+    size_t pos = 0;
+    while (pos < str.size())
+    {
+        size_t const prev = pos;
+        char32_t const cp = ventty::decode(str, pos);
+        int const cpW = ventty::displayWidth(cp);
+        if (width + cpW > budget) { pos = prev; break; }
+        out.append(str.data() + prev, pos - prev);
+        width += cpW;
+    }
+    if (useEllipsis) out.append(ellipsis);
+    return out;
+}
+
 } // namespace vtplayer

@@ -46,11 +46,12 @@ public:
 
     /// Called when the user activates audio file(s) (Enter / double-click).
     /// `paths` contains every audio file to add: the multi-selection set
-    /// when non-empty, otherwise just the cursor entry. `insertFront` is
-    /// true on Shift+Enter (prepend), false otherwise (append). The
-    /// receiver should add all paths in order and play the first one.
+    /// when non-empty, otherwise just the cursor entry. `quietAppend` is
+    /// true on Shift+Enter — append to the end of the playlist without
+    /// disturbing playback. When false, append and start playing the first
+    /// newly-added track.
     using OnActivateCallback =
-        std::function<void(std::vector<std::filesystem::path> const &, bool insertFront)>;
+        std::function<void(std::vector<std::filesystem::path> const &, bool quietAppend)>;
     void setOnActivate(OnActivateCallback cb) { _onActivate = std::move(cb); }
 
     using OnOpenPlaylistCallback = std::function<void(std::filesystem::path const &)>;

@@ -3,6 +3,8 @@
 
 #include "ContextMenu.h"
 
+#include "../util/UnicodeNormalize.h"
+
 #include <ventty/core/Utf8.h>
 
 namespace vtplayer
@@ -139,20 +141,8 @@ void ContextMenu::draw(ventty::Window & window)
         std::string prefix = selected ? " > " : "   ";
         window.drawText(itemX, itemY, prefix, style);
 
-        std::string label = _items[i];
-        int maxLabel = itemW - static_cast<int>(prefix.size()) - 1;
-        if (maxLabel > 0 && static_cast<int>(ventty::stringWidth(label)) > maxLabel)
-        {
-            // Truncate with ellipsis; cheap byte-wise truncation is fine for ASCII.
-            if (maxLabel > 2)
-            {
-                label = label.substr(0, maxLabel - 2) + "..";
-            }
-            else
-            {
-                label = label.substr(0, maxLabel);
-            }
-        }
+        int const maxLabel = itemW - static_cast<int>(prefix.size()) - 1;
+        std::string label = truncateToWidth(_items[i], maxLabel);
         window.drawText(itemX + static_cast<int>(prefix.size()), itemY, label, style);
         ++itemY;
     }
